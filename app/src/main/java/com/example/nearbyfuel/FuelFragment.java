@@ -5,10 +5,14 @@ import android.content.pm.PackageManager;
 import android.location.Location;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -35,6 +39,11 @@ import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.android.gms.tasks.Task;
 
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.select.Elements;
+import org.w3c.dom.Element;
+
 public class FuelFragment extends Fragment implements OnMapReadyCallback, GoogleApiClient.ConnectionCallbacks, GoogleApiClient.OnConnectionFailedListener, LocationListener {
 
     private static final String TAG = "FuelFragment";
@@ -50,16 +59,22 @@ public class FuelFragment extends Fragment implements OnMapReadyCallback, Google
     View view;
     SupportMapFragment mapFragment;
     FusedLocationProviderClient fusedLocationProviderClient;
-    double currentLat=0,currentLong=0;
+    double currentLat = 0, currentLong = 0;
 
+    public static String city;
+    public static TextView price;
+
+    Elements rows;
+    Elements table;
+    Document doc;
 
     private OnMapReadyCallback callback = new OnMapReadyCallback() {
 
         @Override
         public void onMapReady(GoogleMap googleMap) {
-            map=googleMap;
+            map = googleMap;
             map.animateCamera(CameraUpdateFactory.newLatLngZoom(
-                    new LatLng(currentLat,currentLong),10
+                    new LatLng(currentLat, currentLong), 10
             ));
         }
     };
@@ -68,7 +83,9 @@ public class FuelFragment extends Fragment implements OnMapReadyCallback, Google
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-        view= inflater.inflate(R.layout.fragment_fuel, container, false);
+        view = inflater.inflate(R.layout.fragment_fuel, container, false);
+
+        price= view.findViewById(R.id.fuel_price);
 
         if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             checkLocationPermission();
@@ -76,11 +93,9 @@ public class FuelFragment extends Fragment implements OnMapReadyCallback, Google
         if (!CheckGooglePlayServices()) {
             Log.d(TAG, "onCreateView: Finishing test case since Google Play Services are not available");
             getActivity().finish();
-        }
-        else {
+        } else {
             Log.d(TAG, "onCreateView: Google Play Services available.");
         }
-
         return view;
     }
 
@@ -106,21 +121,19 @@ public class FuelFragment extends Fragment implements OnMapReadyCallback, Google
     private void getCurrentLocation() {
         if (ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
                 ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(getActivity(),new String[]{Manifest.permission.ACCESS_FINE_LOCATION},44);
+            ActivityCompat.requestPermissions(getActivity(), new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 44);
             return;
         }
         Task<Location> task = fusedLocationProviderClient.getLastLocation();
         task.addOnSuccessListener(new OnSuccessListener<Location>() {
             @Override
             public void onSuccess(Location location) {
-                if(location!=null)
-                {
-                    currentLat=location.getLatitude();
-                    currentLong=location.getLongitude();
+                if (location != null) {
+                    currentLat = location.getLatitude();
+                    currentLong = location.getLongitude();
                     map.moveCamera(CameraUpdateFactory.newLatLngZoom(
-                            new LatLng(currentLat,currentLong), 15));
-                }
-                else {
+                            new LatLng(currentLat, currentLong), 15));
+                } else {
                     Log.d(TAG, "Current location is null. Using defaults.");
                     map.moveCamera(CameraUpdateFactory
                             .newLatLngZoom(mDefaultLocation, 15));
@@ -148,6 +161,88 @@ public class FuelFragment extends Fragment implements OnMapReadyCallback, Google
             buildGoogleApiClient();
             map.setMyLocationEnabled(true);
         }
+
+
+        final Button btnPetrolPumps = (Button) view.findViewById(R.id.btn_find);
+        Button b = view.findViewById(R.id.btn_find);
+        btnPetrolPumps.setOnClickListener(new View.OnClickListener() {
+
+            @Override
+            public void onClick(View v) {
+
+                Log.d(TAG, "onClick: Button clicked");
+                // mMap.clear();
+                String url = "https://api.tomtom.com/search/2/search/petrol%20pump.json?key=Z8AhQfamLYwQYG6AVzec1I1vMYoAOjYh" +
+                        "&lat=" + latitude +
+                        "&lon=" + longitude +
+                        "&radius=5000";
+
+                Log.d(TAG, "onClick: url=" + url);
+                Object[] DataTransfer = new Object[2];
+                DataTransfer[0] = map;
+                DataTransfer[1] = url;
+                Log.d("onClick", url);
+                Log.d(TAG, "onClick: GetNearByPlaces object created");
+                GetNearbyPlacesData getNearbyPlacesData = new GetNearbyPlacesData();
+                getNearbyPlacesData.execute(DataTransfer);
+                Toast.makeText(getContext(), "Nearby Petrol Pumps", Toast.LENGTH_LONG).show();
+            }
+        });
+
+        map.setInfoWindowAdapter(new GoogleMap.InfoWindowAdapter() {
+            @Override
+            public View getInfoWindow(Marker marker) {
+                return null;
+            }
+
+            @Override
+            public View getInfoContents(Marker marker) {
+                View infoWindow = getLayoutInflater().inflate(R.layout.marker_info_window,
+                        (FrameLayout) view.findViewById(R.id.map), false);
+
+                if(city != null)
+                {
+                    fetchPrice(city);
+                }
+
+                TextView title = infoWindow.findViewById(R.id.bsname);
+                title.setText(marker.getTitle());
+
+                TextView snippet = infoWindow.findViewById(R.id.bsaddress);
+                snippet.setText(marker.getSnippet());
+
+                return infoWindow;
+            }
+        });
+    }
+
+    private void fetchPrice(final String cityName) {
+        final Handler handler = new Handler();
+        Runnable runnable = new Runnable() {
+            @Override
+            public void run() {
+                try
+                    {
+                        doc = Jsoup.connect("https://www.petroldieselprice.com/petrol-diesel-price-in-"+cityName).userAgent("Mozilla").get();
+                        table=doc.select("table.shop_table");
+                        rows=table.select("tr.cart-subtotal");
+
+                    }
+                catch (Exception e)
+                {
+                    e.printStackTrace();
+                }
+                handler.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        Elements row= rows.select("td");
+                        price.setVisibility(View.VISIBLE);
+                        price.setText("Today's price as of "+row.get(0).text()+ " are \nPetrol : "+row.get(1).text()+"\n Diesel : "+row.get(2).text());
+                    }
+                });
+            }
+        } ;
+        new Thread(runnable).start();
     }
 
 
@@ -203,17 +298,17 @@ public class FuelFragment extends Fragment implements OnMapReadyCallback, Google
         latitude = location.getLatitude();
         longitude = location.getLongitude();
         LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
-        MarkerOptions markerOptions = new MarkerOptions();
-        markerOptions.position(latLng);
-        markerOptions.title("Current Position "+latitude +" , "+longitude);
-        markerOptions.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA));
-        mCurrLocationMarker = map.addMarker(markerOptions);
-
-        //move map camera
-        //map.moveCamera(CameraUpdateFactory.newLatLng(latLng));
-//        map.animateCamera(CameraUpdateFactory.zoomTo(11));
-        map.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(location.getLatitude(), location.getLongitude()), 18));
-        Toast.makeText(getContext(),"Your Current Location", Toast.LENGTH_LONG).show();
+//        MarkerOptions markerOptions = new MarkerOptions();
+//        markerOptions.position(latLng);
+//        markerOptions.title("Current Position "+latitude +" , "+longitude);
+//        markerOptions.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_MAGENTA));
+//        mCurrLocationMarker = map.addMarker(markerOptions);
+//
+//        //move map camera
+//        //map.moveCamera(CameraUpdateFactory.newLatLng(latLng));
+////        map.animateCamera(CameraUpdateFactory.zoomTo(11));
+//        map.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(location.getLatitude(), location.getLongitude()), 18));
+//        Toast.makeText(getContext(),"Your Current Location", Toast.LENGTH_LONG).show();
         Log.d(TAG, "onLocationChanged: Current location : "+latitude+" , "+longitude);
         Log.d("onLocationChanged", String.format("latitude:%.3f longitude:%.3f",latitude,longitude));
 

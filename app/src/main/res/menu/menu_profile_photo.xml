@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/menu_edit_photo"
+        android:title="edit"
+        android:icon="@drawable/ic_baseline_edit_24_2"
+        xmlns:app="http://schemas.android.com/apk/res-auto"
+        app:showAsAction="always"/>
+</menu>

@@ -236,8 +236,8 @@ public class FuelFragment extends Fragment implements OnMapReadyCallback, Google
                     @Override
                     public void run() {
                         Elements row= rows.select("td");
-                       // price.setVisibility(View.VISIBLE);
-                       // price.setText("Today's price as of "+row.get(0).text()+ " are \nPetrol : "+row.get(1).text()+"\n Diesel : "+row.get(2).text());
+                        price.setVisibility(View.VISIBLE);
+                        price.setText("Today's price as of "+row.get(0).text()+ " are \nPetrol : "+row.get(1).text()+"\n Diesel : "+row.get(2).text());
                     }
                 });
             }
